@@ -5,6 +5,11 @@ import requests
 from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from dotenv import load_dotenv # Import load_dotenv
+import os # Import the os module
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -14,7 +19,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration
-BOT_TOKEN = "7331481570:AAEWqwmCYL-mLUlcKXySfmY0p_728D9gZxA"  # Replace with your actual bot token
+# Get the bot token from environment variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable not set. Please set it in .env file or as an environment variable.")
+
 RESULTS_URL = "https://vishnu.edu.in/Results.php"
 
 class CGPAExtractor:
@@ -206,7 +215,7 @@ class CGPAExtractor:
             if not cgpa:
                 # Look for spans/divs with CGPA-related classes or ids
                 cgpa_elements = soup.find_all(['span', 'div', 'td', 'p'],
-                                            attrs={'class': re.compile(r'cgpa|gpa|grade', re.I)})
+                                               attrs={'class': re.compile(r'cgpa|gpa|grade', re.I)})
 
                 for element in cgpa_elements:
                     text = element.get_text().strip()
@@ -239,14 +248,14 @@ class CGPAExtractor:
                                             cgpa = str(potential_cgpa)
                                             break
 
-                            # Also check current cell for CGPA value
-                            if 'cgpa' in cell_text:
-                                number_match = re.search(r'(\d+\.?\d*)', cell_text)
-                                if number_match:
-                                    potential_cgpa = float(number_match.group(1))
-                                    if 0 <= potential_cgpa <= 10:
-                                        cgpa = str(potential_cgpa)
-                                        break
+                                # Also check current cell for CGPA value
+                                if 'cgpa' in cell_text:
+                                    number_match = re.search(r'(\d+\.?\d*)', cell_text)
+                                    if number_match:
+                                        potential_cgpa = float(number_match.group(1))
+                                        if 0 <= potential_cgpa <= 10:
+                                            cgpa = str(potential_cgpa)
+                                            break
                         if cgpa:
                             break
                     if cgpa:
