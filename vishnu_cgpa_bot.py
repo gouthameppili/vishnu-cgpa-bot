@@ -1,3 +1,5 @@
+# Updated Vishnu CGPA Bot with proper POST request and CGPA + PDF support
+
 import os
 import logging
 import re
@@ -9,13 +11,9 @@ from fpdf import FPDF
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Load BOT_TOKEN from environment variable
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-# Constants
-RESULTS_URL = "https://vishnu.edu.in/Results.php"
 logging.basicConfig(level=logging.INFO)
-session_data: Dict[int, Dict] = {}  # Tracks user roll numbers and data
+session_data: Dict[int, Dict] = {}
 
 class CGPAExtractor:
     def __init__(self):
@@ -23,26 +21,25 @@ class CGPAExtractor:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0',
             'Accept': 'text/html,application/xhtml+xml',
+            'Content-Type': 'application/x-www-form-urlencoded'
         })
 
     def get_html(self, roll):
         try:
-            response = self.session.get(f"{RESULTS_URL}?rollno={roll}", timeout=10)
+            data = {"rollno": roll}
+            response = self.session.post("https://vishnu.edu.in/Results.php", data=data, timeout=10)
             response.raise_for_status()
             return response.text
         except Exception as e:
-            logging.error(f"Error fetching HTML: {e}")
+            logging.error(f"Error fetching HTML for {roll}: {e}")
             return None
 
     def extract_data(self, html):
         soup = BeautifulSoup(html, 'html.parser')
         text = soup.get_text().lower()
-
-        # Check for invalid roll number
-        if any(err in text for err in ["not found", "invalid", "no result"]):
+        if any(x in text for x in ["not found", "invalid", "no result"]):
             return None, None
 
-        # Parse tables for marks
         tables = soup.find_all("table")
         semesters = []
         for table in tables:
@@ -55,10 +52,8 @@ class CGPAExtractor:
             if semester:
                 semesters.append(semester)
 
-        # Try to extract CGPA
-        cgpa_match = re.search(r'cgpa\s*:?[\s]*([\d.]+)', text)
+        cgpa_match = re.search(r'(?:cgpa|cumulative grade point average).*?(\d+\.\d+)', text)
         cgpa = cgpa_match.group(1) if cgpa_match else "-"
-
         return semesters, cgpa
 
     def generate_pdf(self, roll, semesters, cgpa):
@@ -66,7 +61,6 @@ class CGPAExtractor:
         pdf.add_page()
         pdf.set_font("Arial", 'B', 16)
         pdf.cell(0, 10, f"Marksheet for {roll}", ln=True, align='C')
-
         pdf.set_font("Arial", size=12)
         for idx, semester in enumerate(semesters, 1):
             pdf.ln(5)
@@ -74,13 +68,10 @@ class CGPAExtractor:
             pdf.cell(0, 10, f"Semester {idx}", ln=True)
             pdf.set_font("Arial", size=11)
             for row in semester:
-                line = ' | '.join(row)
-                pdf.cell(0, 8, line, ln=True)
-
+                pdf.cell(0, 8, ' | '.join(row), ln=True)
         pdf.ln(5)
         pdf.set_font("Arial", 'B', 12)
         pdf.cell(0, 10, f"Final CGPA: {cgpa}", ln=True)
-
         pdf_buffer = BytesIO()
         pdf.output(pdf_buffer)
         pdf_buffer.seek(0)
@@ -90,21 +81,20 @@ extractor = CGPAExtractor()
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    text = update.message.text.strip().lower()
+    text = update.message.text.strip().upper()
 
-    # Step 1: User sent roll number
-    if re.match(r'^[0-9a-zA-Z]{10}$', text):
+    if re.match(r'^[0-9A-Z]{10}$', text):
+        await update.message.reply_text(f"🔄 Processing roll number: {text}\nPlease wait while I fetch your CGPA...")
         html = extractor.get_html(text)
         if not html:
-            await update.message.reply_text("❌ Failed to fetch data. Try again later.")
+            await update.message.reply_text("❌ Failed to fetch result. Website may be down or format changed.")
             return
 
         semesters, cgpa = extractor.extract_data(html)
         if not semesters:
-            await update.message.reply_text("❌ No results found. Check the roll number.")
+            await update.message.reply_text(f"❌ Unable to retrieve CGPA\n📛 Roll Number: {text}\n⚠️ Issue: Unable to retrieve results. The website might be temporarily unavailable or the roll number format might be incorrect.\n\nPlease check:\n- Roll number is correct\n- Results are published for your batch\n- Website is accessible\n\nTry again with the correct roll number or try later.")
             return
 
-        # Store user session
         session_data[user_id] = {
             "roll": text,
             "semesters": semesters,
@@ -113,11 +103,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             f"✅ *Roll Number:* `{text}`\n📊 *CGPA:* `{cgpa}`\n\n📄 Do you want the full PDF marksheet?\nJust reply with `yes` or `pdf`.",
-            parse_mode='Markdown'
-        )
+            parse_mode='Markdown')
 
-    # Step 2: User asked for PDF
-    elif text in ("yes", "pdf") and user_id in session_data:
+    elif text.lower() in ("yes", "pdf") and user_id in session_data:
         data = session_data[user_id]
         pdf_file = extractor.generate_pdf(data["roll"], data["semesters"], data["cgpa"])
         await update.message.reply_document(
@@ -127,10 +115,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     else:
-        await update.message.reply_text("❌ Please send a valid roll number to begin.")
+        await update.message.reply_text("❌ Please send a valid 10-character roll number to begin.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Send your roll number to get your CGPA. Example: 21A91A0501")
+    await update.message.reply_text("👋 Send your 10-character roll number to get your CGPA and marksheet. Example: 23PA1A4235")
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
