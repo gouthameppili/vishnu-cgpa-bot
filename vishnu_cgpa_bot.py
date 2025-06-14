@@ -1,24 +1,6 @@
-#!/usr/bin/env python3
-"""
-Vishnu CGPA Telegram Bot with PDF Marksheet Generation
-A Telegram bot that retrieves student CGPA from Vishnu Institute website and generates PDF marksheets.
-
-Requirements:
-pip install python-telegram-bot requests beautifulsoup4 lxml weasyprint
-
-System Dependencies (Linux/Ubuntu):
-sudo apt-get install -y libffi-dev libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libxml2-dev libxslt1-dev
-
-Usage:
-python vishnu_cgpa_bot.py
-"""
-
 import logging
 import re
 import asyncio
-import os
-import tempfile
-from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 from telegram import Update
@@ -58,7 +40,7 @@ class CGPAExtractor:
             roll_number (str): Student roll number
 
         Returns:
-            dict: Result containing success status, CGPA, HTML content, and message
+            dict: Result containing success status, CGPA, and message
         """
         try:
             # Clean roll number (remove spaces, convert to uppercase)
@@ -274,7 +256,6 @@ class CGPAExtractor:
                 return {
                     'success': True,
                     'cgpa': cgpa,
-                    'html_content': html,  # Include HTML content for PDF generation
                     'message': f'CGPA for roll number {roll_number}: {cgpa}'
                 }
             else:
@@ -292,157 +273,6 @@ class CGPAExtractor:
                 'message': 'Error processing results page.'
             }
 
-def extract_marksheet_content(soup: BeautifulSoup, roll_number: str) -> Optional[str]:
-    """
-    Extract and clean marksheet content from BeautifulSoup object.
-
-    This function makes assumptions about the HTML structure of vishnu.edu.in/Results.php
-    """
-    try:
-        # Remove scripts, styles, and other non-content elements
-        for element in soup(['script', 'style', 'nav', 'header', 'footer']):
-            element.decompose()
-
-        # Strategy 1: Look for common marksheet container patterns
-        marksheet_containers = [
-            soup.find('div', {'id': re.compile(r'result|marksheet|student', re.I)}),
-            soup.find('div', {'class': re.compile(r'result|marksheet|student', re.I)}),
-            soup.find('table', {'class': re.compile(r'result|marksheet|student', re.I)}),
-            soup.find('main'),
-            soup.find('div', {'class': 'container'}),
-        ]
-
-        marksheet_content = None
-        for container in marksheet_containers:
-            if container:
-                marksheet_content = container
-                break
-
-        # Strategy 2: If no specific container found, look for the main table
-        if not marksheet_content:
-            tables = soup.find_all('table')
-            if tables:
-                # Assume the largest table contains the marksheet
-                marksheet_content = max(tables, key=lambda t: len(t.get_text()))
-
-        # Strategy 3: Fallback to body content
-        if not marksheet_content:
-            marksheet_content = soup.find('body')
-
-        if not marksheet_content:
-            return None
-
-        # Clean up the content further
-        # Remove navigation, breadcrumbs, etc.
-        for element in marksheet_content.find_all(['nav', 'ul'], {'class': re.compile(r'nav|menu|breadcrumb', re.I)}):
-            element.decompose()
-
-        # Create a complete HTML document
-        html_template = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Marksheet - {roll_number}</title>
-        </head>
-        <body>
-            <div class="header">
-                <h1>VISHNU INSTITUTE OF TECHNOLOGY</h1>
-                <h2>Student Marksheet</h2>
-            </div>
-            <div class="student-info">
-                <strong>Roll Number: {roll_number}</strong>
-            </div>
-            {marksheet_content}
-        </body>
-        </html>
-        """
-
-        return html_template
-
-    except Exception as e:
-        logger.error(f"Error extracting marksheet content: {e}")
-        return None
-
-async def generate_marksheet_pdf(roll_number: str, html_content: str) -> Optional[str]:
-    """
-    Generate PDF from marksheet HTML content.
-
-    Args:
-        roll_number (str): Student roll number
-        html_content (str): HTML content from results page
-
-    Returns:
-        Optional[str]: Path to generated PDF file, or None if failed
-    """
-    try:
-        # Import WeasyPrint
-        try:
-            from weasyprint import HTML, CSS
-        except ImportError:
-            logger.error("WeasyPrint not installed. Please install it: pip install weasyprint")
-            return None
-
-        # Parse HTML content
-        soup = BeautifulSoup(html_content, 'html.parser')
-
-        # Clean and extract marksheet content
-        marksheet_html = extract_marksheet_content(soup, roll_number)
-
-        if not marksheet_html:
-            logger.error("Could not extract marksheet content from HTML")
-            return None
-
-        # Create temporary file for PDF
-        temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
-        temp_pdf.close()
-
-        # Basic CSS for PDF styling
-        css_content = """
-        @page {
-            size: A4;
-            margin: 1cm;
-        }
-        body {
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 10px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-            font-weight: bold;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .student-info {
-            margin-bottom: 15px;
-        }
-        """
-
-        # Generate PDF
-        HTML(string=marksheet_html).write_pdf(
-            temp_pdf.name,
-            stylesheets=[CSS(string=css_content)]
-        )
-
-        return temp_pdf.name
-
-    except Exception as e:
-        logger.error(f"Error generating PDF: {e}")
-        return None
-
 # Initialize CGPA extractor
 cgpa_extractor = CGPAExtractor()
 
@@ -451,15 +281,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_message = """
 🎓 **Welcome to Vishnu CGPA Bot!** 🎓
 
-I can help you retrieve your CGPA from Vishnu Institute of Technology and generate PDF marksheets.
+I can help you retrieve your CGPA from Vishnu Institute of Technology.
 
 📝 **How to use:**
 Simply send me your roll number and I'll fetch your CGPA for you.
 
 **Example:**
 Just type: `21A91A0501` or `20A91A0234`
-
-📄 **New Feature:** After getting your CGPA, I can also generate and send you a complete PDF marksheet!
 
 ⚡ **Quick and Easy!**
 No need for any commands - just send your roll number directly.
@@ -484,18 +312,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 **Usage:**
 1. Simply send your roll number as a text message
 2. Wait for the bot to fetch your CGPA
-3. Choose whether you want a PDF marksheet
-4. Receive your results instantly!
 
 **Examples:**
 • `21A91A0501`
 • `20A91A0234`
 • `19A91A1234`
-
-**PDF Feature:**
-After receiving your CGPA results, the bot will ask if you want a PDF marksheet. Reply with:
-• **Yes** or **Y** - to generate and receive PDF
-• **No** or **N** - to skip PDF generation
 
 **Troubleshooting:**
 • Make sure your roll number is correct
@@ -513,9 +334,6 @@ After receiving your CGPA results, the bot will ask if you want a PDF marksheet.
 async def handle_roll_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle roll number input from user."""
     user_input = update.message.text.strip()
-
-    # Clear any previous PDF confirmation state
-    context.user_data.pop('awaiting_pdf_confirmation', None)
 
     # Basic validation for roll number format
     if not user_input:
@@ -560,26 +378,6 @@ async def handle_roll_number(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 success_message.strip(),
                 parse_mode='Markdown'
             )
-
-            # Ask for PDF confirmation
-            pdf_question = """
-📄 **Would you like to receive your complete marksheet as a PDF file?**
-
-Reply with:
-• **Yes** or **Y** - to generate and receive PDF
-• **No** or **N** - to skip PDF generation
-            """
-
-            await update.message.reply_text(
-                pdf_question.strip(),
-                parse_mode='Markdown'
-            )
-
-            # Store data for PDF generation
-            context.user_data['awaiting_pdf_confirmation'] = True
-            context.user_data['roll_number'] = user_input
-            context.user_data['html_content'] = result.get('html_content', '')
-
         else:
             # Error message
             error_message = f"""
@@ -609,102 +407,6 @@ Try again with the correct roll number or try later.
             parse_mode='Markdown'
         )
 
-async def handle_pdf_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle PDF confirmation from user."""
-
-    # Check if we're waiting for PDF confirmation
-    if not context.user_data.get('awaiting_pdf_confirmation', False):
-        return  # Ignore if not waiting for confirmation
-
-    # Reset the confirmation flag immediately
-    context.user_data.pop('awaiting_pdf_confirmation', None)
-
-    user_response = update.message.text.strip().lower()
-
-    if user_response in ['yes', 'y']:
-        # User wants PDF
-        roll_number = context.user_data.get('roll_number', '')
-        html_content = context.user_data.get('html_content', '')
-
-        if not roll_number or not html_content:
-            await update.message.reply_text(
-                "❌ **Error:** Missing data for PDF generation. Please try again with your roll number.",
-                parse_mode='Markdown'
-            )
-            # Clean up user data
-            context.user_data.pop('roll_number', None)
-            context.user_data.pop('html_content', None)
-            return
-
-        # Send processing message
-        processing_msg = await update.message.reply_text(
-            "📄 **Generating your marksheet PDF...**\n⏳ This may take a few moments.",
-            parse_mode='Markdown'
-        )
-
-        try:
-            # Generate PDF
-            pdf_path = await generate_marksheet_pdf(roll_number, html_content)
-
-            if pdf_path and os.path.exists(pdf_path):
-                # Send PDF file
-                with open(pdf_path, 'rb') as pdf_file:
-                    await update.message.reply_document(
-                        document=pdf_file,
-                        filename=f"marksheet_{roll_number}.pdf",
-                        caption=f"📄 **Marksheet for Roll Number:** `{roll_number}`",
-                        parse_mode='Markdown'
-                    )
-
-                # Update processing message
-                await processing_msg.edit_text(
-                    "✅ **PDF generated and sent successfully!**",
-                    parse_mode='Markdown'
-                )
-
-                # Clean up temporary file
-                try:
-                    os.remove(pdf_path)
-                except Exception as e:
-                    logger.error(f"Error removing temporary PDF file: {e}")
-            else:
-                await processing_msg.edit_text(
-                    "❌ **Failed to generate PDF**\n\nThe marksheet data might not be in the expected format.",
-                    parse_mode='Markdown'
-                )
-
-        except Exception as e:
-            logger.error(f"Error generating PDF for {roll_number}: {e}")
-            await processing_msg.edit_text(
-                "❌ **Error generating PDF**\n\nPlease try again later or contact support if the issue persists.",
-                parse_mode='Markdown'
-            )
-
-        # Clean up user data
-        context.user_data.pop('roll_number', None)
-        context.user_data.pop('html_content', None)
-
-    elif user_response in ['no', 'n']:
-        # User doesn't want PDF
-        await update.message.reply_text(
-            "👍 **Okay, no PDF will be generated.**\n\nYou can request your CGPA again anytime by sending your roll number.",
-            parse_mode='Markdown'
-        )
-
-        # Clean up user data
-        context.user_data.pop('roll_number', None)
-        context.user_data.pop('html_content', None)
-
-    else:
-        # Invalid response
-        await update.message.reply_text(
-            "❓ **Please respond with:**\n• **Yes** or **Y** - for PDF\n• **No** or **N** - to skip\n\nTry again:",
-            parse_mode='Markdown'
-        )
-
-        # Keep the awaiting_pdf_confirmation flag active
-        context.user_data['awaiting_pdf_confirmation'] = True
-
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle errors."""
     logger.error(f"Exception while handling an update: {context.error}")
@@ -726,18 +428,7 @@ def main() -> None:
     # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-
-    # Add PDF confirmation handler (must come before roll number handler)
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.Regex(r'(?i)^(yes|y|no|n)$'),
-        handle_pdf_confirmation
-    ))
-
-    # Updated roll number handler to exclude yes/no responses
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & ~filters.Regex(r'(?i)^(yes|y|no|n)$'),
-        handle_roll_number
-    ))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_roll_number))
 
     # Add error handler
     application.add_error_handler(error_handler)
