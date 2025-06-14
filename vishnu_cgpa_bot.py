@@ -156,7 +156,7 @@ class CGPAExtractor:
     def _try_get_request(self, roll_number: str) -> dict:
         """Try submitting roll number via GET request."""
         try:
-            # Common parameter names
+            # Common parameter name
             possible_params = ['rollno', 'roll_no', 'regdno', 'regno', 'student_id']
 
             for param in possible_params:
