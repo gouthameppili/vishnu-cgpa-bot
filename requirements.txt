@@ -1,0 +1,7 @@
+python-telegram-bot==20.7
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+python-dotenv==1.0.0
+pytest==7.4.3
+pytest-asyncio==0.21.1
