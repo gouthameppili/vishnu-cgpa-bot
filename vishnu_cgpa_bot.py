@@ -14,7 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration
-BOT_TOKEN = "YOUR_BOT_TOKEN"  # Replace with your actual bot token
+BOT_TOKEN = "7331481570:AAEWqwmCYL-mLUlcKXySfmY0p_728D9gZxA"  # Replace with your actual bot token
 RESULTS_URL = "https://vishnu.edu.in/Results.php"
 
 class CGPAExtractor:
