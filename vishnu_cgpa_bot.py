@@ -728,16 +728,26 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     
     # Add PDF confirmation handler (must come before roll number handler)
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.Regex(r'^(yes|y|no|n)$', re.IGNORECASE),
-        handle_pdf_confirmation
-    ))
+    # application.add_handler(MessageHandler(
+    #     filters.TEXT & ~filters.COMMAND & filters.Regex(r'^(yes|y|no|n)$', re.IGNORECASE),
+    #     handle_pdf_confirmation
+    # ))
     
-    # Updated roll number handler to exclude yes/no responses
+    # # Updated roll number handler to exclude yes/no responses
+    # application.add_handler(MessageHandler(
+    #     filters.TEXT & ~filters.COMMAND & ~filters.Regex(r'^(yes|y|no|n)$', re.IGNORECASE),
+    #     handle_roll_number
+    # ))
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & ~filters.Regex(r'^(yes|y|no|n)$', re.IGNORECASE),
-        handle_roll_number
+    filters.TEXT & ~filters.COMMAND & filters.Regex(r'(?i)^(yes|y|no|n)$'),
+    handle_pdf_confirmation
     ))
+
+    application.add_handler(MessageHandler(
+    filters.TEXT & ~filters.COMMAND & ~filters.Regex(r'(?i)^(yes|y|no|n)$'),
+    handle_roll_number
+    ))
+
     
     # Add error handler
     application.add_error_handler(error_handler)
